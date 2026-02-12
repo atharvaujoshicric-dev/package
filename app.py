@@ -60,10 +60,11 @@ if uploaded_file:
         else:
             df = pd.read_excel(xls, sheet_name=target_sheet)
             
-            # --- DATA CLEANING (Ensures merging works) ---
-            # Forward fill only if they were merged/blank in the input
+            # --- DATA CLEANING ---
             df['Location'] = df['Location'].ffill()
             df['Property'] = df['Property'].ffill()
+            if 'Total Count' in df.columns:
+                df['Total Count'] = df['Total Count'].ffill()
 
             # --- CALCULATIONS ---
             carpet_col = next((c for c in df.columns if "carpet area(sq.ft)" in c.lower()), None)
@@ -72,10 +73,8 @@ if uploaded_file:
 
             if carpet_col and apr_col:
                 lower_carpet = df[carpet_col].apply(extract_lower_carpet)
-                # Formula: Lower Carpet * 1.4 * 1.12 * Average of APR
                 df['Package'] = (lower_carpet * 1.568 * df[apr_col]).round(0)
                 
-                # Reorder to put Package before Count of Property
                 if count_col:
                     cols = df.columns.tolist()
                     cols.remove('Package')
@@ -97,7 +96,7 @@ if uploaded_file:
                     last_row = len(df) + 1
                     last_col = len(df.columns)
 
-                    # 1. Base Styles: Borders, Alignment, and Width
+                    # 1. Base Styles
                     for r in range(1, last_row + 1):
                         for c in range(1, last_col + 1):
                             cell = ws.cell(row=r, column=c)
@@ -108,12 +107,10 @@ if uploaded_file:
                         ws.column_dimensions[col[0].column_letter].width = 22
 
                     # 2. Advanced Merging & Coloring Logic
-                    # We iterate through the rows to find blocks of same Location/Property
                     current_loc, start_row_loc = None, 2
                     current_prop, start_row_prop, color_idx = None, 2, 0
                     
                     for row_num in range(2, last_row + 2):
-                        # Use .value to compare
                         val_loc = ws.cell(row=row_num, column=1).value
                         val_prop = ws.cell(row=row_num, column=2).value
                         
@@ -125,25 +122,27 @@ if uploaded_file:
                                     ws.merge_cells(start_row=start_row_loc, start_column=1, end_row=end_row_loc, end_column=1)
                             start_row_loc, current_loc = row_num, val_loc
 
-                        # --- Merge Property & Apply Color ---
+                        # --- Merge Property, Total Count & Apply Color ---
                         if val_prop != current_prop or row_num == last_row + 1:
                             if current_prop is not None:
                                 end_row_prop = row_num - 1
-                                # Apply color fill to the block
                                 fill = PatternFill(start_color=colors[color_idx % len(colors)], fill_type="solid")
+                                
                                 for r_fill in range(start_row_prop, end_row_prop + 1):
                                     for c_fill in range(1, last_col + 1):
                                         ws.cell(row=r_fill, column=c_fill).fill = fill
                                 
-                                # Perform Merge for Property
+                                # Perform Merge for Property (Col 2)
                                 if end_row_prop > start_row_prop:
                                     ws.merge_cells(start_row=start_row_prop, start_column=2, end_row=end_row_prop, end_column=2)
+                                    # Perform Merge for Total Count (Last Col)
+                                    ws.merge_cells(start_row=start_row_prop, start_column=last_col, end_row=end_row_prop, end_column=last_col)
                                 
                                 color_idx += 1
                             start_row_prop, current_prop = row_num, val_prop
 
                 file_content = output.getvalue()
-                st.success("Report Generated with Professional Styling & Merged Cells!")
+                st.success("Report Generated with Professional Styling, Merged Cells, and Total Count Aligned!")
                 st.dataframe(df.head(10))
 
                 # --- SIDEBAR EMAIL ---
@@ -152,10 +151,10 @@ if uploaded_file:
                 if st.sidebar.button("Send to Email") and recipient:
                     full_email = f"{recipient.strip().lower()}@beyondwalls.com"
                     with st.spinner(f'Sending to {full_email}...'):
-                        if send_email(full_email, file_content, Spydarr_Package_Report.xlsx"):
+                        if send_email(full_email, file_content, "Spydarr_Package_Report.xlsx"):
                             st.sidebar.success(f"Sent to {full_email}")
-
                 
+                st.download_button("📥 Download Excel", file_content, "Spydarr_Package_Report.xlsx")
 
     except Exception as e:
         st.error(f"Error: {e}")
