@@ -155,7 +155,7 @@ if uploaded_file:
                         if send_email(full_email, file_content, f"{recipient}_Package_Report.xlsx"):
                             st.sidebar.success(f"Sent to {full_email}")
 
-                st.download_button("📥 Download Excel File", file_content, "Professional_Package_Report.xlsx")
+                
 
     except Exception as e:
         st.error(f"Error: {e}")
