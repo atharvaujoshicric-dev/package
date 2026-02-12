@@ -152,7 +152,7 @@ if uploaded_file:
                 if st.sidebar.button("Send to Email") and recipient:
                     full_email = f"{recipient.strip().lower()}@beyondwalls.com"
                     with st.spinner(f'Sending to {full_email}...'):
-                        if send_email(full_email, file_content, f"{recipient}_Package_Report.xlsx"):
+                        if send_email(full_email, file_content, Spydarr_Package_Report.xlsx"):
                             st.sidebar.success(f"Sent to {full_email}")
 
                 
