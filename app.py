@@ -81,6 +81,9 @@ if uploaded_file:
                     count_idx = cols.index(count_col)
                     cols.insert(count_idx, 'Package')
                     df = df[cols]
+                
+                # Get current column index for Package (1-based for openpyxl)
+                package_col_idx = df.columns.tolist().index('Package') + 1
 
                 # --- EXCEL STYLING ENGINE ---
                 output = io.BytesIO()
@@ -93,6 +96,9 @@ if uploaded_file:
                                          top=Side(style='thin'), bottom=Side(style='thin'))
                     colors = ["A2D2FF", "FFD6A5", "CAFFBF", "FDFFB6", "FFADAD", "BDB2FF", "9BF6FF"]
                     
+                    # Indian Number Format for Lakhs/Crores
+                    indian_format = '[>=10000000]##\,##\,##\,##0;[>=100000]##\,##\,##0;##,##0'
+                    
                     last_row = len(df) + 1
                     last_col = len(df.columns)
 
@@ -102,6 +108,10 @@ if uploaded_file:
                             cell = ws.cell(row=r, column=c)
                             cell.alignment = center_align
                             cell.border = thin_border
+                            
+                            # Apply Indian Comma Formatting to the Package Column
+                            if c == package_col_idx and r > 1:
+                                cell.number_format = indian_format
                     
                     for col in ws.columns:
                         ws.column_dimensions[col[0].column_letter].width = 22
@@ -142,7 +152,7 @@ if uploaded_file:
                             start_row_prop, current_prop = row_num, val_prop
 
                 file_content = output.getvalue()
-                st.success("Report Generated with Professional Styling, Merged Cells, and Total Count Aligned!")
+                st.success("Report Generated with Indian Currency Formatting!")
                 st.dataframe(df.head(10))
 
                 # --- SIDEBAR EMAIL ---
@@ -154,7 +164,7 @@ if uploaded_file:
                         if send_email(full_email, file_content, "Spydarr_Package_Report.xlsx"):
                             st.sidebar.success(f"Sent to {full_email}")
                 
-                st.download_button("📥 Download Excel", file_content, "Spydarr_Package_Report.xlsx")
+                
 
     except Exception as e:
         st.error(f"Error: {e}")
