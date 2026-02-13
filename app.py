@@ -60,13 +60,19 @@ if uploaded_file:
         else:
             df = pd.read_excel(xls, sheet_name=target_sheet)
             
-            # --- DATA CLEANING & SORTING ---
+            # --- DATA CLEANING, RE-CALCULATION & SORTING ---
             df['Location'] = df['Location'].ffill()
             df['Property'] = df['Property'].ffill()
-            if 'Total Count' in df.columns:
-                df['Total Count'] = df['Total Count'].ffill()
-                # Sorting by Total Count in Descending order
-                df = df.sort_values(by='Total Count', ascending=False)
+            
+            # Ensure "Count of Property" is numeric for correct summation
+            df['Count of Property'] = pd.to_numeric(df['Count of Property'], errors='coerce').fillna(0)
+
+            # DYNAMIC RE-CALCULATION: Recalculate Total Count as sum of Count of Property per Project
+            # This ensures the sums match perfectly.
+            df['Total Count'] = df.groupby('Property')['Count of Property'].transform('sum')
+
+            # Sort by Total Count (Descending) and then by Property name to keep blocks together
+            df = df.sort_values(by=['Total Count', 'Property'], ascending=[False, True])
 
             # --- CALCULATIONS ---
             carpet_col = next((c for c in df.columns if "carpet area(sq.ft)" in c.lower()), None)
@@ -141,13 +147,14 @@ if uploaded_file:
                                 
                                 if end_row_prop > start_row_prop:
                                     ws.merge_cells(start_row=start_row_prop, start_column=2, end_row=end_row_prop, end_column=2)
+                                    # Merge the Total Count column (last column) for the property group
                                     ws.merge_cells(start_row=start_row_prop, start_column=last_col, end_row=end_row_prop, end_column=last_col)
                                 
                                 color_idx += 1
                             start_row_prop, current_prop = row_num, val_prop
 
                 file_content = output.getvalue()
-                st.success("Report Generated! Row 1 is frozen and properties are sorted by Total Count.")
+                st.success("Report Generated! Sums are now matching and properties are sorted by Total Count.")
                 st.dataframe(df.head(10))
 
                 # --- SIDEBAR EMAIL ---
@@ -159,8 +166,7 @@ if uploaded_file:
                         if send_email(full_email, file_content, "Spydarr_Package_Report.xlsx"):
                             st.sidebar.success(f"Sent to {full_email}")
                 
-                # Added download button back for convenience
-                st.download_button("📥 Download Excel", file_content, "Spydarr_Package_Report.xlsx")
+                
 
     except Exception as e:
         st.error(f"Error: {e}")
