@@ -60,11 +60,13 @@ if uploaded_file:
         else:
             df = pd.read_excel(xls, sheet_name=target_sheet)
             
-            # --- DATA CLEANING ---
+            # --- DATA CLEANING & SORTING ---
             df['Location'] = df['Location'].ffill()
             df['Property'] = df['Property'].ffill()
             if 'Total Count' in df.columns:
                 df['Total Count'] = df['Total Count'].ffill()
+                # Sorting by Total Count in Descending order
+                df = df.sort_values(by='Total Count', ascending=False)
 
             # --- CALCULATIONS ---
             carpet_col = next((c for c in df.columns if "carpet area(sq.ft)" in c.lower()), None)
@@ -82,7 +84,6 @@ if uploaded_file:
                     cols.insert(count_idx, 'Package')
                     df = df[cols]
                 
-                # Get current column index for Package (1-based for openpyxl)
                 package_col_idx = df.columns.tolist().index('Package') + 1
 
                 # --- EXCEL STYLING ENGINE ---
@@ -91,12 +92,13 @@ if uploaded_file:
                     df.to_excel(writer, index=False, sheet_name='Report')
                     ws = writer.book['Report']
                     
+                    # FREEZE FIRST ROW
+                    ws.freeze_panes = "A2"
+                    
                     center_align = Alignment(horizontal='center', vertical='center')
                     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
                                          top=Side(style='thin'), bottom=Side(style='thin'))
                     colors = ["A2D2FF", "FFD6A5", "CAFFBF", "FDFFB6", "FFADAD", "BDB2FF", "9BF6FF"]
-                    
-                    # Indian Number Format for Lakhs/Crores
                     indian_format = '[>=10000000]##\,##\,##\,##0;[>=100000]##\,##\,##0;##,##0'
                     
                     last_row = len(df) + 1
@@ -108,8 +110,6 @@ if uploaded_file:
                             cell = ws.cell(row=r, column=c)
                             cell.alignment = center_align
                             cell.border = thin_border
-                            
-                            # Apply Indian Comma Formatting to the Package Column
                             if c == package_col_idx and r > 1:
                                 cell.number_format = indian_format
                     
@@ -124,7 +124,6 @@ if uploaded_file:
                         val_loc = ws.cell(row=row_num, column=1).value
                         val_prop = ws.cell(row=row_num, column=2).value
                         
-                        # --- Merge Location ---
                         if val_loc != current_loc or row_num == last_row + 1:
                             if current_loc is not None:
                                 end_row_loc = row_num - 1
@@ -132,27 +131,23 @@ if uploaded_file:
                                     ws.merge_cells(start_row=start_row_loc, start_column=1, end_row=end_row_loc, end_column=1)
                             start_row_loc, current_loc = row_num, val_loc
 
-                        # --- Merge Property, Total Count & Apply Color ---
                         if val_prop != current_prop or row_num == last_row + 1:
                             if current_prop is not None:
                                 end_row_prop = row_num - 1
                                 fill = PatternFill(start_color=colors[color_idx % len(colors)], fill_type="solid")
-                                
                                 for r_fill in range(start_row_prop, end_row_prop + 1):
                                     for c_fill in range(1, last_col + 1):
                                         ws.cell(row=r_fill, column=c_fill).fill = fill
                                 
-                                # Perform Merge for Property (Col 2)
                                 if end_row_prop > start_row_prop:
                                     ws.merge_cells(start_row=start_row_prop, start_column=2, end_row=end_row_prop, end_column=2)
-                                    # Perform Merge for Total Count (Last Col)
                                     ws.merge_cells(start_row=start_row_prop, start_column=last_col, end_row=end_row_prop, end_column=last_col)
                                 
                                 color_idx += 1
                             start_row_prop, current_prop = row_num, val_prop
 
                 file_content = output.getvalue()
-                st.success("Report Generated with Indian Currency Formatting!")
+                st.success("Report Generated! Row 1 is frozen and properties are sorted by Total Count.")
                 st.dataframe(df.head(10))
 
                 # --- SIDEBAR EMAIL ---
@@ -164,7 +159,8 @@ if uploaded_file:
                         if send_email(full_email, file_content, "Spydarr_Package_Report.xlsx"):
                             st.sidebar.success(f"Sent to {full_email}")
                 
-                
+                # Added download button back for convenience
+                st.download_button("📥 Download Excel", file_content, "Spydarr_Package_Report.xlsx")
 
     except Exception as e:
         st.error(f"Error: {e}")
