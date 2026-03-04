@@ -60,19 +60,26 @@ if uploaded_file:
         else:
             df = pd.read_excel(xls, sheet_name=target_sheet)
             
-            # --- DATA CLEANING, RE-CALCULATION & SORTING ---
+            # --- DATA CLEANING ---
+            # Capture the original order of locations before ffilling
+            original_location_order = df['Location'].dropna().unique().tolist()
+            
             df['Location'] = df['Location'].ffill()
             df['Property'] = df['Property'].ffill()
             
-            # Ensure "Count of Property" is numeric for correct summation
+            # Ensure "Count of Property" is numeric
             df['Count of Property'] = pd.to_numeric(df['Count of Property'], errors='coerce').fillna(0)
 
-            # DYNAMIC RE-CALCULATION: Recalculate Total Count as sum of Count of Property per Project
-            # This ensures the sums match perfectly.
-            df['Total Count'] = df.groupby('Property')['Count of Property'].transform('sum')
+            # DYNAMIC RE-CALCULATION
+            df['Total Count'] = df.groupby(['Location', 'Property'])['Count of Property'].transform('sum')
 
-            # Sort by Total Count (Descending) and then by Property name to keep blocks together
-            df = df.sort_values(by=['Total Count', 'Property'], ascending=[False, True])
+            # --- CUSTOM SORTING LOGIC ---
+            # 1. Convert Location to a Categorical type using the original order found in the file
+            df['Location'] = pd.Categorical(df['Location'], categories=original_location_order, ordered=True)
+            
+            # 2. Sort: First by Location (Original Order), then by Total Count (Descending)
+            df = df.sort_values(by=['Location', 'Total Count', 'Property'], 
+                               ascending=[True, False, True]).reset_index(drop=True)
 
             # --- CALCULATIONS ---
             carpet_col = next((c for c in df.columns if "carpet area(sq.ft)" in c.lower()), None)
@@ -85,7 +92,7 @@ if uploaded_file:
                 
                 if count_col:
                     cols = df.columns.tolist()
-                    cols.remove('Package')
+                    if 'Package' in cols: cols.remove('Package')
                     count_idx = cols.index(count_col)
                     cols.insert(count_idx, 'Package')
                     df = df[cols]
@@ -130,6 +137,7 @@ if uploaded_file:
                         val_loc = ws.cell(row=row_num, column=1).value
                         val_prop = ws.cell(row=row_num, column=2).value
                         
+                        # Merge Locations
                         if val_loc != current_loc or row_num == last_row + 1:
                             if current_loc is not None:
                                 end_row_loc = row_num - 1
@@ -137,6 +145,7 @@ if uploaded_file:
                                     ws.merge_cells(start_row=start_row_loc, start_column=1, end_row=end_row_loc, end_column=1)
                             start_row_loc, current_loc = row_num, val_loc
 
+                        # Merge Properties & Apply Alternating Colors
                         if val_prop != current_prop or row_num == last_row + 1:
                             if current_prop is not None:
                                 end_row_prop = row_num - 1
@@ -147,15 +156,14 @@ if uploaded_file:
                                 
                                 if end_row_prop > start_row_prop:
                                     ws.merge_cells(start_row=start_row_prop, start_column=2, end_row=end_row_prop, end_column=2)
-                                    # Merge the Total Count column (last column) for the property group
                                     ws.merge_cells(start_row=start_row_prop, start_column=last_col, end_row=end_row_prop, end_column=last_col)
                                 
                                 color_idx += 1
                             start_row_prop, current_prop = row_num, val_prop
 
                 file_content = output.getvalue()
-                st.success("Report Generated! Sums are now matching and properties are sorted by Total Count.")
-                st.dataframe(df.head(10))
+                st.success("Report Generated! Locations preserved, Properties sorted by Total Count within each Location.")
+                st.dataframe(df.head(20))
 
                 # --- SIDEBAR EMAIL ---
                 st.sidebar.header("📧 Email Report")
@@ -165,8 +173,6 @@ if uploaded_file:
                     with st.spinner(f'Sending to {full_email}...'):
                         if send_email(full_email, file_content, "Spydarr_Package_Report.xlsx"):
                             st.sidebar.success(f"Sent to {full_email}")
-                
-                
 
     except Exception as e:
         st.error(f"Error: {e}")
